@@ -1,0 +1,14 @@
+{
+  "wifi": {
+    "ssid": "PEI_TestNet",
+    "passw": "DETImotic"
+  },
+  "gateway": {
+    "addr": "192.168.0.2",
+    "uname": "detimotic",
+    "passw": "testpw",
+    "port": 1883,
+    "telemetry_topic": "t",
+    "events_topic": "e"
+  }
+}
