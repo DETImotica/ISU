@@ -73,12 +73,13 @@ def setup_connectivity():
 
 
 def setup_sensors():
-    for sensor in conf['sensors']:
-        _thread.start_new_thread(sensor_thread, (sensor,))
+    for module in conf['modules']:
+        if module['active']:
+            _thread.start_new_thread(sensor_thread, (module,))
 
-def sensor_thread(sensor):
-    s = Sensor(sensor)
-    s.sensor_logic()
+def sensor_thread(module):
+    s = Module(module)
+    s.module_logic()
 
 def publish(id, message):
     client.publish(topic=detimotic_conf['gateway']['telemetry_topic'] + "/" + str(id), msg='{"value": ' + str(message) + '}')
@@ -88,36 +89,37 @@ def signal(id, event):
     client.publish(topic=detimotic_conf['gateway']['events_topic']+ "/" + str(id), msg='{"' + str(event) + '" : 1}')
 
 
-class Sensor:
-    sensor = None
+class Module:
+    module = None
 
     def __init__(self, s):
-        self.sensor = s
+        self.module = s
 
-    def sensor_logic(self):
+    def module_logic(self):
         t = time.ticks_ms()
-        s = __import__('sensors/' + str(self.sensor['name']))
+        s = __import__('sensors/' + str(self.module['name']))
+        print('Starting module ' + str(self.module['name']))
         getattr(s, "setup")(self)
         while(1):
-            while(time.ticks_ms() - t < self.sensor['wait_time']):
+            while(time.ticks_ms() - t < self.module['wait_time']):
                 if kill:
-                    print(str(self.sensor['name']) + " thread exiting")
+                    print(str(self.module['name']) + " thread exiting")
                     _thread.exit()
             getattr(s, "loop")(self)
             t = time.ticks_ms()
 
     def publish(self, id, message):
         try:
-            uuid = self.sensor['metrics'][id]
+            uuid = self.module['metrics'][id]
         except:
-            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(sensor['name']) + ". Cannot publish telemetry!")
+            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(module['name']) + ". Cannot publish telemetry!")
             return
         publish(uuid, message)
 
     def signal(self, id, message):
         try:
-            uuid = self.sensor['metrics'][id]
+            uuid = self.module['events'][id]
         except:
-            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(sensor['name']) + ". Cannot signal event!")
+            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(module['name']) + ". Cannot signal event!")
             return
         signal(uuid, message)

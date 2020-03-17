@@ -1,8 +1,9 @@
 {
   "isu_id": "ce5d820b-0d64-4c77-92ab-0ae294d81d09",
-  "sensors": [
+  "modules": [
     {
       "name": "tsl2561",
+      "active": true,
       "wait_time": 3000,
       "metrics": {
         "lux": "144f7484-7446-4e8f-b58e-c25221904dea"
@@ -10,6 +11,7 @@
     },
     {
       "name": "bluetooth",
+      "active": true,
       "wait_time": 10000,
       "metrics": {
         "device_num": "9e83f5a4-07c5-491e-8867-16572707b15c"
