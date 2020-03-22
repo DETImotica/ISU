@@ -8,7 +8,7 @@
     "uname": "detimotic",
     "passw": "testpw",
     "port": 1883,
-    "telemetry_topic": "t",
-    "events_topic": "e"
+    "telemetry_topic": "telemetry",
+    "events_topic": "events"
   }
 }

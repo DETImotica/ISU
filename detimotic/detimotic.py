@@ -1,12 +1,11 @@
 # Main imports
-from mqtt import MQTTClient
 from network import WLAN
 import machine, ujson, _thread
 import time, sys
 import gc
 
 # Lib imports
-from lib import mqtt
+from lib.mqtt_robust import MQTTClient
 
 # Config dicts
 detimotic_conf = None
