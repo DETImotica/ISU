@@ -81,11 +81,16 @@ def sensor_thread(module):
     s.module_logic()
 
 def publish(id, message):
-    client.publish(topic=detimotic_conf['gateway']['telemetry_topic'] + "/" + str(id), msg='{"value": ' + str(message) + '}')
-
+    try:
+        client.publish(topic=detimotic_conf['gateway']['telemetry_topic'] + "/" + str(id), msg='{"value": ' + str(message) + '}')
+    except:
+        print("Error publishing: %s", message)
 
 def signal(id, event):
-    client.publish(topic=detimotic_conf['gateway']['events_topic']+ "/" + str(id), msg='{"' + str(event) + '" : 1}')
+    try:
+        client.publish(topic=detimotic_conf['gateway']['events_topic']+ "/" + str(id), msg='{"' + str(event) + '" : 1}')
+    except:
+        print("Error signaling: %s", message)
 
 
 class Module:
