@@ -1,2 +1,5 @@
 # boot.py -- run on boot-up
-import main
+from detimotic import detimotic
+
+if __name__ == "__main__":
+    detimotic.main()

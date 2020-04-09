@@ -1,8 +1,7 @@
 # Main imports
 from network import WLAN
 import machine, ujson, _thread
-import time, sys
-import gc
+import time, sys, gc
 
 # Lib imports
 from lib.mqtt_robust import MQTTClient
@@ -14,23 +13,24 @@ conf = None
 # Global vars
 wlan = None
 client = None
-kill = False
+modules = []
 
 def main():
-    global kill
-
     setup_config()
     setup_connectivity()
     setup_sensors()
 
     try:
-        while(1):
-            pass
+        while True:
+            for i in range(len(modules)):
+                module, last = modules[i]
+                if time.ticks_ms() - last >= module.time():
+                    module.loop()
+                    modules[i] = (module, time.ticks_ms())
+            gc.collect()
     except KeyboardInterrupt:
         print("KB INTERRUPT!")
-        kill = True
         wlan.disconnect()
-        gc.collect()
         sys.exit(2)
 
 
@@ -74,56 +74,52 @@ def setup_connectivity():
 def setup_sensors():
     for module in conf['modules']:
         if module['active']:
-            _thread.start_new_thread(sensor_thread, (module,))
-
-def sensor_thread(module):
-    s = Module(module)
-    s.module_logic()
+            s = Module(module)
+            s.setup()
+            modules.append((s, 0))
 
 def publish(id, message):
     try:
         client.publish(topic=detimotic_conf['gateway']['telemetry_topic'] + "/" + str(id), msg='{"value": ' + str(message) + '}')
     except:
-        print("Error publishing: %s", message)
+        print("Error publishing: {}".format(message))
 
 def signal(id, event):
     try:
         client.publish(topic=detimotic_conf['gateway']['events_topic']+ "/" + str(id), msg='{"' + str(event) + '" : 1}')
     except:
-        print("Error signaling: %s", message)
-
+        print("Error signaling: {}".format(event))
 
 class Module:
-    module = None
+    _module = None
+    _instance = None
 
     def __init__(self, s):
-        self.module = s
+        self._module = s
 
-    def module_logic(self):
-        t = time.ticks_ms()
-        s = __import__('sensors/' + str(self.module['name']))
-        print('Starting module ' + str(self.module['name']))
-        getattr(s, "setup")(self)
-        while(1):
-            while(time.ticks_ms() - t < self.module['wait_time']):
-                if kill:
-                    print(str(self.module['name']) + " thread exiting")
-                    _thread.exit()
-            getattr(s, "loop")(self)
-            t = time.ticks_ms()
+    def setup(self):
+        self._instance = __import__('sensors/' + str(self._module['name']))
+        print('Starting module ' + str(self._module['name']))
+        getattr(self._instance, "setup")(self)
+
+    def loop(self):
+        getattr(self._instance, "loop")(self)
+
+    def time(self):
+        return self._module['wait_time']
 
     def publish(self, id, message):
         try:
-            uuid = self.module['metrics'][id]
+            uuid = self._module['metrics'][id]
         except:
-            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(module['name']) + ". Cannot publish telemetry!")
+            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(_module['name']) + ". Cannot publish telemetry!")
             return
         publish(uuid, message)
 
     def signal(self, id, message):
         try:
-            uuid = self.module['events'][id]
+            uuid = self._module['events'][id]
         except:
-            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(module['name']) + ". Cannot signal event!")
+            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(_module['name']) + ". Cannot signal event!")
             return
         signal(uuid, message)
