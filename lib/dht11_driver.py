@@ -3,8 +3,6 @@ import pycom
 from machine import enable_irq, disable_irq,  Pin
 
 class DTHResult:
-    'DHT sensor result returned by DHT.read() method'
-
     ERR_NO_ERROR = 0
     ERR_MISSING_DATA = 1
     ERR_CRC = 2
@@ -23,8 +21,6 @@ class DTHResult:
 
 
 class DTH:
-    'DHT sensor (dht11, dht21,dht22) reader class for Pycom'
-
     #__pin = Pin('P3', mode=Pin.OPEN_DRAIN)
     __dhttype = 0
 
@@ -73,7 +69,7 @@ class DTH:
     def __send_and_sleep(self, output, mysleep):
         self.__pin(output)
         time.sleep(mysleep)
- 
+
     def __bits_to_bytes(self, bits):
         the_bytes = []
         byte = 0

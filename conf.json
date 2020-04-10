@@ -12,7 +12,7 @@
     {
       "name": "bme680",
       "active": true,
-      "wait_time": 1000,
+      "wait_time": 3000,
       "metrics": {
         "temp": "55fbf7d0-cc47-4642-9290-a493d383ad8c",
         "hum": "e7cdb45b-e370-4d74-bb3a-8ebe7527e458",

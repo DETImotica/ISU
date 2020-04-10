@@ -1,6 +1,6 @@
 import time
 
-burn_in_time = 300000
+burn_in_time = 900000
 burn_in_data = []
 start_time = None
 gas_baseline = None
