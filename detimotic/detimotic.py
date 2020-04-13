@@ -4,7 +4,7 @@ import machine, ujson, _thread
 import time, sys, gc
 
 # Lib imports
-from lib.mqtt_robust import MQTTClient
+from lib.mqtt import MQTTClient
 
 # Config dicts
 detimotic_conf = None
@@ -18,19 +18,24 @@ modules = []
 def main():
     setup_config()
     setup_connectivity()
+    gc.collect()
     setup_sensors()
 
     try:
         while True:
+            #try:
             for i in range(len(modules)):
                 module, last = modules[i]
                 if time.ticks_ms() - last >= module.time():
+                    gc.collect()
                     module.loop()
                     modules[i] = (module, time.ticks_ms())
-            gc.collect()
+            #except MemoryError:
+            #    print('Memory Error!')
     except KeyboardInterrupt:
         print("KB INTERRUPT!")
         wlan.disconnect()
+        gc.collect()
         sys.exit(2)
 
 

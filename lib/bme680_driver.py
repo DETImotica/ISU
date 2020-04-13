@@ -4,152 +4,152 @@ import math
 import time
 
 class BME680(BME680Data):
-    def __init__(self, i2c_addr=I2C_ADDR_SECONDARY, i2c_device=None):
+    def __init__(self, i2c_addr=0x77, i2c_device=None):
         BME680Data.__init__(self)
 
         self.i2c_addr = i2c_addr
         self._i2c = i2c_device
 
-        self.chip_id = self._get_regs(CHIP_ID_ADDR, 1)
-        if self.chip_id != CHIP_ID:
+        self.chip_id = self._get_regs(0xd0, 1)
+        if self.chip_id != 0x61:
             raise RuntimeError("BME680 Not Found. Invalid CHIP ID: 0x{0:02x}".format(self.chip_id))
 
         self.soft_reset()
-        self.set_power_mode(SLEEP_MODE)
+        self.set_power_mode(0)
 
         self._get_calibration_data()
 
-        self.set_humidity_oversample(OS_2X)
-        self.set_pressure_oversample(OS_4X)
-        self.set_temperature_oversample(OS_8X)
-        self.set_filter(FILTER_SIZE_3)
-        self.set_gas_status(ENABLE_GAS_MEAS)
+        self.set_humidity_oversample(2)
+        self.set_pressure_oversample(3)
+        self.set_temperature_oversample(4)
+        self.set_filter(2)
+        self.set_gas_status(0x01)
 
         self.get_sensor_data()
 
     def _get_calibration_data(self):
-        calibration = self._get_regs(COEFF_ADDR1, COEFF_ADDR1_LEN)
-        calibration += self._get_regs(COEFF_ADDR2, COEFF_ADDR2_LEN)
+        calibration = self._get_regs(0x89, 25)
+        calibration += self._get_regs(0xe1, 16)
 
-        heat_range = self._get_regs(ADDR_RES_HEAT_RANGE_ADDR, 1)
-        heat_value = twos_comp(self._get_regs(ADDR_RES_HEAT_VAL_ADDR, 1), bits=8)
-        sw_error = twos_comp(self._get_regs(ADDR_RANGE_SW_ERR_ADDR, 1), bits=8)
+        heat_range = self._get_regs(0x02, 1)
+        heat_value = twos_comp(self._get_regs(0x00, 1), bits=8)
+        sw_error = twos_comp(self._get_regs(0x04, 1), bits=8)
 
         self.calibration_data.set_from_array(calibration)
         self.calibration_data.set_other(heat_range, heat_value, sw_error)
 
     def soft_reset(self):
-        self._set_regs(SOFT_RESET_ADDR, SOFT_RESET_CMD)
-        time.sleep(RESET_PERIOD / 1000.0)
+        self._set_regs(0xe0, 0xb6)
+        time.sleep(10 / 1000.0)
 
     def set_humidity_oversample(self, value):
         self.tph_settings.os_hum = value
-        self._set_bits(CONF_OS_H_ADDR, OSH_MSK, OSH_POS, value)
+        self._set_bits(0x72, 0X07, 0, value)
 
     def get_humidity_oversample(self):
-        return (self._get_regs(CONF_OS_H_ADDR, 1) & OSH_MSK) >> OSH_POS
+        return (self._get_regs(0x72, 1) & 0X07) >> 0
 
     def set_pressure_oversample(self, value):
         self.tph_settings.os_pres = value
-        self._set_bits(CONF_T_P_MODE_ADDR, OSP_MSK, OSP_POS, value)
+        self._set_bits(0x74, 0X1C, 2, value)
 
     def get_pressure_oversample(self):
-        return (self._get_regs(CONF_T_P_MODE_ADDR, 1) & OSP_MSK) >> OSP_POS
+        return (self._get_regs(0x74, 1) & 0X1C) >> 2
 
     def set_temperature_oversample(self, value):
         self.tph_settings.os_temp = value
-        self._set_bits(CONF_T_P_MODE_ADDR, OST_MSK, OST_POS, value)
+        self._set_bits(0x74, 0XE0, 5, value)
 
     def get_temperature_oversample(self):
-        return (self._get_regs(CONF_T_P_MODE_ADDR, 1) & OST_MSK) >> OST_POS
+        return (self._get_regs(0x74, 1) & 0XE0) >> 5
 
     def set_filter(self, value):
         self.tph_settings.filter = value
-        self._set_bits(CONF_ODR_FILT_ADDR, FILTER_MSK, FILTER_POS, value)
+        self._set_bits(0x75, 0X1C, 2, value)
 
     def get_filter(self):
-        return (self._get_regs(CONF_ODR_FILT_ADDR, 1) & FILTER_MSK) >> FILTER_POS
+        return (self._get_regs(0x75, 1) & 0X1C) >> 2
 
     def select_gas_heater_profile(self, value):
-        if value > NBCONV_MAX or value < NBCONV_MIN:
+        if value > 9 or value < 0:
             raise ValueError("Profile '{}' should be between {} and {}".format(value, NBCONV_MIN, NBCONV_MAX))
 
         self.gas_settings.nb_conv = value
-        self._set_bits(CONF_ODR_RUN_GAS_NBC_ADDR, NBCONV_MSK, NBCONV_POS, value)
+        self._set_bits(0x71, 0X0F, 0, value)
 
     def get_gas_heater_profile(self):
-        return self._get_regs(CONF_ODR_RUN_GAS_NBC_ADDR, 1) & NBCONV_MSK
+        return self._get_regs(0x71, 1) & 0X0F
 
     def set_gas_status(self, value):
         self.gas_settings.run_gas = value
-        self._set_bits(CONF_ODR_RUN_GAS_NBC_ADDR, RUN_GAS_MSK, RUN_GAS_POS, value)
+        self._set_bits(0x71, 0x10, 4, value)
 
     def get_gas_status(self):
-        return (self._get_regs(CONF_ODR_RUN_GAS_NBC_ADDR, 1) & RUN_GAS_MSK) >> RUN_GAS_POS
+        return (self._get_regs(0x71, 1) & 0x10) >> 4
 
     def set_gas_heater_profile(self, temperature, duration, nb_profile=0):
         self.set_gas_heater_temperature(temperature, nb_profile=nb_profile)
         self.set_gas_heater_duration(duration, nb_profile=nb_profile)
 
     def set_gas_heater_temperature(self, value, nb_profile=0):
-        if nb_profile > NBCONV_MAX or value < NBCONV_MIN:
+        if nb_profile > 9 or value < 0:
             raise ValueError("Profile '{}' should be between {} and {}".format(nb_profile, NBCONV_MIN, NBCONV_MAX))
 
         self.gas_settings.heatr_temp = value
         temp = int(self._calc_heater_resistance(self.gas_settings.heatr_temp))
-        self._set_regs(RES_HEAT0_ADDR + nb_profile, temp)
+        self._set_regs(0x5a + nb_profile, temp)
 
     def set_gas_heater_duration(self, value, nb_profile=0):
-        if nb_profile > NBCONV_MAX or value < NBCONV_MIN:
+        if nb_profile > 9 or value < 0:
             raise ValueError("Profile '{}' should be between {} and {}".format(nb_profile, NBCONV_MIN, NBCONV_MAX))
 
         self.gas_settings.heatr_dur = value
         temp = self._calc_heater_duration(self.gas_settings.heatr_dur)
-        self._set_regs(GAS_WAIT0_ADDR + nb_profile, temp)
+        self._set_regs(0x64 + nb_profile, temp)
 
     def set_power_mode(self, value, blocking=True):
         """Set power mode"""
-        if value not in (SLEEP_MODE, FORCED_MODE):
+        if value not in (0, 1):
             print("Power mode should be one of SLEEP_MODE or FORCED_MODE")
 
         self.power_mode = value
 
-        self._set_bits(CONF_T_P_MODE_ADDR, MODE_MSK, MODE_POS, value)
+        self._set_bits(0x74, 0x03, 0, value)
 
         while blocking and self.get_power_mode() != self.power_mode:
-            time.sleep(POLL_PERIOD_MS / 1000.0)
+            time.sleep(10 / 1000.0)
 
     def get_power_mode(self):
-        self.power_mode = self._get_regs(CONF_T_P_MODE_ADDR, 1)
+        self.power_mode = self._get_regs(0x74, 1)
         return self.power_mode
 
     def get_sensor_data(self):
-        self.set_power_mode(FORCED_MODE)
+        self.set_power_mode(1)
 
         for attempt in range(10):
-            status = self._get_regs(FIELD0_ADDR, 1)
+            status = self._get_regs(0x1d, 1)
 
-            if (status & NEW_DATA_MSK) == 0:
-                time.sleep(POLL_PERIOD_MS / 1000.0)
+            if (status & 0x80) == 0:
+                time.sleep(10 / 1000.0)
                 continue
 
-            regs = self._get_regs(FIELD0_ADDR, FIELD_LENGTH)
+            regs = self._get_regs(0x1d, 15)
 
-            self.data.status = regs[0] & NEW_DATA_MSK
+            self.data.status = regs[0] & 0x80
             # Contains the nb_profile used to obtain the current measurement
-            self.data.gas_index = regs[0] & GAS_INDEX_MSK
+            self.data.gas_index = regs[0] & 0x0f
             self.data.meas_index = regs[1]
 
             adc_pres = (regs[2] << 12) | (regs[3] << 4) | (regs[4] >> 4)
             adc_temp = (regs[5] << 12) | (regs[6] << 4) | (regs[7] >> 4)
             adc_hum = (regs[8] << 8) | regs[9]
             adc_gas_res = (regs[13] << 2) | (regs[14] >> 6)
-            gas_range = regs[14] & GAS_RANGE_MSK
+            gas_range = regs[14] & 0x0f
 
-            self.data.status |= regs[14] & GASM_VALID_MSK
-            self.data.status |= regs[14] & HEAT_STAB_MSK
+            self.data.status |= regs[14] & 0x20
+            self.data.status |= regs[14] & 0x10
 
-            self.data.heat_stable = (self.data.status & HEAT_STAB_MSK) > 0
+            self.data.heat_stable = (self.data.status & 0x10) > 0
 
             temperature = self._calc_temperature(adc_temp)
             self.data.temperature = temperature / 100.0

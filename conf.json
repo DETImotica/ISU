@@ -21,6 +21,14 @@
       }
     },
     {
+      "name": "lmv324",
+      "active": true,
+      "wait_time": 2000,
+      "metrics": {
+        "db": "7d245a97-66c7-49eb-9940-dbb9cb24f5ec"
+      }
+    },
+    {
       "name": "bluetooth",
       "active": true,
       "wait_time": 10000,
