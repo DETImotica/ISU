@@ -1,13 +1,3 @@
-#!/usr/bin/env python
-#
-# Copyright (c) 2019, Pycom Limited.
-#
-# This software is licensed under the GNU GPL version 3 or any
-# later version, with permitted additional terms. For more information
-# see the Pycom Licence v1.0 document supplied with this file, or
-# available at https://www.pycom.io/opensource/licensing
-#
-
 import usocket as socket
 import ustruct as struct
 from ubinascii import hexlify
@@ -15,7 +5,7 @@ from ubinascii import hexlify
 class MQTTException(Exception):
     pass
 
-class MQTTClient:
+class MQTTC:
 
     def __init__(self, client_id, server, port=0, user=None, password=None, keepalive=0,
                  ssl=False, ssl_params={}):
@@ -104,27 +94,25 @@ class MQTTClient:
         self.sock.write(b"\xc0\0")
 
     def publish(self, topic, msg, retain=False, qos=0):
-        pkt = bytearray(b"\x30\0\0\0")
-        pkt[0] |= qos << 1 | retain
-        sz = 2 + len(topic) + len(msg)
-        if qos > 0:
-            sz += 2
-        assert sz < 2097152
-        i = 1
-        while sz > 0x7f:
-            pkt[i] = (sz & 0x7f) | 0x80
-            sz >>= 7
-            i += 1
-        pkt[i] = sz
-        #print(hex(len(pkt)), hexlify(pkt, ":"))
-        self.sock.write(pkt, i + 1)
-        self._send_str(topic)
-        if qos > 0:
+        topic = topic.encode('utf-8')
+        payload = msg.encode('utf-8')
+
+        header = 0x30 | (False << 3) | (qos << 1) | retain
+        pkt_len = (2 + len(topic) +
+                    (2 if qos else 0) +
+                    (len(payload)))
+
+        pkt = bytearray([header])
+        pkt.extend(self._encode_varlen_length(pkt_len)) # len of the remaining
+        pkt.extend(self._pascal_string(topic))
+        if qos:
             self.pid += 1
-            pid = self.pid
-            struct.pack_into("!H", pkt, 0, pid)
-            self.sock.write(pkt, 2)
-        self.sock.write(msg)
+            pkt.extend(self._encode_16(self.pid))
+
+        pkt = pkt + payload
+        written = self.sock.write(pkt)
+        if(written is None or written != len(pkt)):
+            print("Socket error")
         if qos == 1:
             while 1:
                 op = self.wait_msg()
@@ -157,10 +145,6 @@ class MQTTClient:
                     raise MQTTException(resp[3])
                 return
 
-    # Wait for a single incoming MQTT message and process it.
-    # Subscribed messages are delivered to a callback previously
-    # set by .set_callback() method. Other (internal) MQTT
-    # messages processed internally.
     def wait_msg(self):
         res = self.sock.read(1)
         self.sock.setblocking(True)
@@ -193,9 +177,66 @@ class MQTTClient:
         elif op & 6 == 4:
             assert 0
 
-    # Checks whether a pending message from server is available.
-    # If not, returns immediately with None. Otherwise, does
-    # the same processing as wait_msg.
     def check_msg(self):
         self.sock.setblocking(False)
         return self.wait_msg()
+
+    def _encode_16(self, x):
+        return struct.pack("!H", x)
+
+    def _pascal_string(self, s):
+        return struct.pack("!H", len(s)) + s
+
+    def _encode_varlen_length(self, length):
+        i = 0
+        buff = bytearray()
+        while 1:
+            buff.append(length % 128)
+            length = length // 128
+            if length > 0:
+                buff[i] = buff[i] | 0x80
+                i += 1
+            else:
+                break
+        return buff
+
+class MQTTClient(MQTTC):
+
+    DELAY = 2
+    DEBUG = False
+
+    def delay(self, i):
+        time.sleep(self.DELAY)
+
+    def log(self, in_reconnect, e):
+        if self.DEBUG:
+            if in_reconnect:
+                print("mqtt reconnect: %r" % e)
+            else:
+                print("mqtt: %r" % e)
+
+    def reconnect(self):
+        i = 0
+        while 1:
+            try:
+                return super().connect(False)
+            except OSError as e:
+                self.log(True, e)
+                i += 1
+                self.delay(i)
+
+    def publish(self, topic, msg, retain=False, qos=0):
+        while 1:
+            try:
+                return super().publish(topic, msg, retain, qos)
+            except OSError as e:
+                self.log(False, e)
+            self.reconnect()
+
+    def wait_msg(self):
+        while 1:
+            try:
+                return super().wait_msg()
+            except OSError as e:
+                self.log(False, e)
+            self.reconnect()
