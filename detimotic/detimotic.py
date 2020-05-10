@@ -1,7 +1,10 @@
 # Main imports
 from network import WLAN
-import machine, ujson, _thread
+from crypto import AES
+from ubinascii import b2a_base64
+import machine, ujson, _thread, crypto
 import time, sys, gc
+from machine import WDT
 
 # Lib imports
 from lib.mqtt import MQTTClient
@@ -14,26 +17,42 @@ conf = None
 wlan = None
 client = None
 modules = []
+watchdog = None
 
 def main():
+    global watchdog
+
     setup_config()
     setup_connectivity()
     gc.collect()
     setup_sensors()
 
+    watchdog = WDT(timeout=detimotic_conf['watchdog'])
+
     try:
         while True:
-            #try:
-            for i in range(len(modules)):
-                module, last = modules[i]
-                if time.ticks_ms() - last >= module.time():
-                    gc.collect()
-                    module.loop()
-                    modules[i] = (module, time.ticks_ms())
-            #except MemoryError:
-            #    print('Memory Error!')
+            try:
+                for i in range(len(modules)):
+                    watchdog.feed()
+                    module, last = modules[i]
+                    if time.ticks_ms() - last >= module.time():
+                        gc.collect()
+                        module.loop()
+                        modules[i] = (module, time.ticks_ms())
+                if time.ticks_ms() - client.last_pingreq >= detimotic_conf['gateway']['ping_freq']:
+                    client.ping()
+                elif time.ticks_ms() - client.last_pingresp >= 3*detimotic_conf['gateway']['ping_freq']:
+                    print('Forcibly reconnecting!')
+                    client.disconnect()
+                    wlan.disconnect()
+                    watchdog.feed()
+                    setup_connectivity()
+                client.check_msg()
+            except MemoryError:
+                print('Memory Error!')
     except KeyboardInterrupt:
         print("KB INTERRUPT!")
+        client.disconnect()
         wlan.disconnect()
         gc.collect()
         sys.exit(2)
@@ -70,7 +89,7 @@ def setup_connectivity():
         machine.idle()
     print("Connected to WiFi")
 
-    client = MQTTClient("device_id", detimotic_conf['gateway']['addr'],user=detimotic_conf['gateway']['uname'], password=detimotic_conf['gateway']['passw'], port=detimotic_conf['gateway']['port'])
+    client = MQTTClient(conf['isu_id'], detimotic_conf['gateway']['addr'],user=detimotic_conf['gateway']['uname'], password=detimotic_conf['gateway']['passw'], port=detimotic_conf['gateway']['port'])
     client.connect()
 
     print("Connected to MQTT gateway\n")
@@ -84,16 +103,20 @@ def setup_sensors():
             modules.append((s, 0))
 
 def publish(id, message):
+    if message is None:
+        return
     try:
-        client.publish(topic=detimotic_conf['gateway']['telemetry_topic'] + "/" + str(id), msg='{"value": ' + str(message) + '}')
+        client.publish(topic=detimotic_conf['gateway']['telemetry_topic'] + "/" + str(id), msg=message)
     except:
-        print("Error publishing: {}".format(message))
+        print("Error publishing for metric: {}".format(id))
 
 def signal(id, event):
+    if event is None:
+        return
     try:
-        client.publish(topic=detimotic_conf['gateway']['events_topic']+ "/" + str(id), msg='{"' + str(event) + '" : 1}')
+        client.publish(topic=detimotic_conf['gateway']['events_topic']+ "/" + str(id), msg=event)
     except:
-        print("Error signaling: {}".format(event))
+        print("Error signaling event: {}".format(event))
 
 class Module:
     _module = None
@@ -115,16 +138,26 @@ class Module:
 
     def publish(self, id, message):
         try:
-            uuid = self._module['metrics'][id]
+            uuid = self._module['metrics'][id]['id']
         except:
-            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(_module['name']) + ". Cannot publish telemetry!")
+            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(self._module['name']) + ". Cannot publish telemetry!")
             return
-        publish(uuid, message)
+        publish(uuid, self._encrypt(id, '{"value": ' + str(message) + '}'))
 
     def signal(self, id, message):
         try:
-            uuid = self._module['events'][id]
+            uuid = self._module['events'][id]['id']
         except:
-            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(_module['name']) + ". Cannot signal event!")
+            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(self._module['name']) + ". Cannot signal event!")
             return
-        signal(uuid, message)
+        signal(uuid, self._encrypt(id, '{"' + str(message) + '" : 1}'))
+
+    def _encrypt(self, id, message):
+        gc.collect()
+        try:
+            iv = crypto.getrandbits(128)
+            cipher = AES(self._module['metrics'][id]['key'].encode('utf-8'), AES.MODE_CFB, iv)
+            return b2a_base64(iv + cipher.encrypt(message.encode('utf-8'))).decode('utf-8')
+        except:
+            print("ERROR encrypting message for metric: " + str(id) + " of sensor " + str(self._module['name']) + ". Cannot proceed!")
+            return None

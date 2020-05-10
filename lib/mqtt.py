@@ -1,6 +1,7 @@
 import usocket as socket
 import ustruct as struct
 from ubinascii import hexlify
+import time
 
 class MQTTException(Exception):
     pass
@@ -25,6 +26,8 @@ class MQTTC:
         self.lw_msg = None
         self.lw_qos = 0
         self.lw_retain = False
+        self.last_pingreq = time.ticks_ms()
+        self.last_pingresp = time.ticks_ms()
 
     def _send_str(self, s):
         self.sock.write(struct.pack("!H", len(s)))
@@ -92,6 +95,7 @@ class MQTTC:
 
     def ping(self):
         self.sock.write(b"\xc0\0")
+        self.last_pingreq = time.ticks_ms()
 
     def publish(self, topic, msg, retain=False, qos=0):
         topic = topic.encode('utf-8')
@@ -155,6 +159,7 @@ class MQTTC:
         if res == b"\xd0":  # PINGRESP
             sz = self.sock.read(1)[0]
             assert sz == 0
+            self.last_pingresp = time.ticks_ms()
             return None
         op = res[0]
         if op & 0xf0 != 0x30:

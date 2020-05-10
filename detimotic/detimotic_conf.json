@@ -9,6 +9,8 @@
     "passw": "testpw",
     "port": 1883,
     "telemetry_topic": "telemetry",
-    "events_topic": "events"
-  }
+    "events_topic": "events",
+    "ping_freq": 10000
+  },
+  "watchdog": 5000
 }
