@@ -4,6 +4,7 @@ from crypto import AES
 from ubinascii import b2a_base64
 import machine, ujson, _thread, crypto
 import time, sys, gc
+from machine import WDT
 
 # Lib imports
 from lib.mqtt import MQTTClient
@@ -16,18 +17,23 @@ conf = None
 wlan = None
 client = None
 modules = []
-nonce_len = None
+watchdog = None
 
 def main():
+    global watchdog
+
     setup_config()
     setup_connectivity()
     gc.collect()
     setup_sensors()
 
+    watchdog = WDT(timeout=detimotic_conf['watchdog'])
+
     try:
         while True:
             try:
                 for i in range(len(modules)):
+                    watchdog.feed()
                     module, last = modules[i]
                     if time.ticks_ms() - last >= module.time():
                         gc.collect()
@@ -39,6 +45,7 @@ def main():
                     print('Forcibly reconnecting!')
                     client.disconnect()
                     wlan.disconnect()
+                    watchdog.feed()
                     setup_connectivity()
                 client.check_msg()
             except MemoryError:
@@ -52,7 +59,7 @@ def main():
 
 
 def setup_config():
-    global detimotic_conf, nonce_len
+    global detimotic_conf
     global conf
 
     # TODO: Parse config to verify data integrity
