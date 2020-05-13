@@ -110,14 +110,6 @@ def publish(id, message):
     except:
         print("Error publishing for metric: {}".format(id))
 
-def signal(id, event):
-    if event is None:
-        return
-    try:
-        client.publish(topic=detimotic_conf['gateway']['events_topic']+ "/" + str(id), msg=event)
-    except:
-        print("Error signaling event: {}".format(event))
-
 class Module:
     _module = None
     _instance = None
@@ -143,14 +135,6 @@ class Module:
             print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(self._module['name']) + ". Cannot publish telemetry!")
             return
         publish(uuid, self._encrypt(id, '{"value": ' + str(message) + '}'))
-
-    def signal(self, id, message):
-        try:
-            uuid = self._module['events'][id]['id']
-        except:
-            print("ERROR loading ID for metric: " + str(id) + " of sensor " + str(self._module['name']) + ". Cannot signal event!")
-            return
-        signal(uuid, self._encrypt(id, '{"' + str(message) + '" : 1}'))
 
     def _encrypt(self, id, message):
         gc.collect()
